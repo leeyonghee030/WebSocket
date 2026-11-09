@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: class_WebSocket_v1
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:test
+    username: sa
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+
+#머스태치 기본위치 templates/xxx.mustache 기본값
