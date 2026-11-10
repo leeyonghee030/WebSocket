@@ -19,30 +19,82 @@
             padding: 5px 10px; margin: 3px 0; background: white;
             border-radius: 8px; max-width: 80%;
         }
+        form {margin-top: 10px; display: flex; gap: 10px;}
+        input {flex: 1; padding: 8px;}
+        button {padding: 8px 15px; background: #007bff; color: white;border: none}
 
     </style>
 </head>
 <body>
-<nav>
-    <a href="/">목록</a>
-    <a href="/save-form">작성</a>
-</nav>
-<h3>채팅 (폴링)</h3>
-<p class="info">약 2초마다 화면을 새로고침 합니다</p>
+
+<h3>채팅 (SSE)</h3>
+<p id="status">서버에 연결하는 중...</p>
 <div class="chat-area" id="chatArea">
 {{#chats}}
     <div class="message">{{msg}}</div>
 {{/chats}}
 </div>
 
-<script>
-    //최신 메세지가 보이도록 스크롤을 맨아래로 내린다
-    const chatArea = document.getElementById("chatArea");
-    //스크롤에 시작 높이를 스크롤 전체 높이(길이로)할경우 맨아래로 내려온다
-     chatArea.scrollTop = chatArea.scrollHeight;
+<form id="chatForm">
+    <input type="text" name="msg" id="msg" placeholder="메세지 입력"
+           required autofocus>
+    <button type="submit">전송</button>
+</form>
 
-    // 폴링 : 페이지가 열리고 2초 뒤 페이지를 다시 불러온다
-    setTimeout(() => location.reload(), 2000);
+<script>
+    const chatArea = document.getElementById('chatArea');
+    const status = document.getElementById('status');
+    const chatForm = document.getElementById('chatForm');
+    const msgInput = document.getElementById('msg');
+
+    //받은 메세지를 화면 맨 아래 추가한다.
+    function appendMessage(msg) {
+        const div = document.createElement("div")
+        div.className = "message";
+        div.textContent = msg;
+        chatArea.appendChild(div);
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    // 받기 sse
+    // 1. 서버에 sse 연결을 연다 (브라우저 내장 객체, 끊기면 자동을 다시 연결한다)
+    const eventSource = new EventSource('/sse/connect');
+
+    //2. 연결이 열리면 상태를 표시한다
+    eventSource.onopen = () => {
+        status.textContent = '서버와 연결 됨(SSE). 새 메세지가 오면 바로 표시 됩니다';
+    }
+
+    // 3. 서버가 chat 이벤트를 보내면 화면에 추가한다 (내가 보낸 메세지도 여기로 들어온다)
+    eventSource.addEventListener('chat', (event) => {
+        appendMessage(event.data);
+    });
+
+    // 4. 연결이 끊기면 상태를 표시 한다. (EventSource가 알아서 재연결을 시도한다)
+    eventSource.onerror = () => {
+        status.textContent = '연결이 끊겼습니다. 다시 연결하는 중...';
+    }
+
+//   === 데이터 보내기 : fetch 활용
+    chatForm.addEventListener('submit', async (e) => {
+        //폼 기본 동작을 막는다
+        e.preventDefault();
+
+        const response = await fetch("/chat", {
+            method: 'POST',
+            body: new URLSearchParams({msg: msgInput.value}),
+        });
+        if (!response.ok){
+            alert("메세지 전송에 실패했습니다");
+            return;
+        }
+        msgInput.value = "";
+        msgInput.focus();
+    });
+
+    //처음 그려진 메세지 중 최신 메이시가 보이도록 스크롤을 맨아래로 내린다
+    chatArea.scrollTop = chatArea.scrollHeight;
+
 </script>
 </body>
 </html>

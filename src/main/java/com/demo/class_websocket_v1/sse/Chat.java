@@ -1,6 +1,5 @@
-package com.demo.class_websocket_v1.chat;
+package com.demo.class_websocket_v1.sse;
 
-import ch.qos.logback.classic.spi.STEUtil;
 import jakarta.persistence.*;
 import lombok.Builder;
 import lombok.Getter;
