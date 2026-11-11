@@ -5,7 +5,7 @@
     <meta name="viewport"
           content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>채팅(폴링)</title>
+    <title>채팅(WebSocket)</title>
     <style>
         body {margin: 20px; font-family: "Calibri Light"}
         nav a {padding: 8px 15px; margin-right: 10px; background: #666; color: white;
@@ -27,7 +27,7 @@
 </head>
 <body>
 
-<h3>채팅 (SSE)</h3>
+<h3>채팅 (WebSocket)</h3>
 <p id="status">서버에 연결하는 중...</p>
 <div class="chat-area" id="chatArea">
 {{#chats}}
@@ -56,41 +56,60 @@
         chatArea.scrollTop = chatArea.scrollHeight;
     }
 
-    // 받기 sse
-    // 1. 서버에 sse 연결을 연다 (브라우저 내장 객체, 끊기면 자동을 다시 연결한다)
-    const eventSource = new EventSource('/sse/connect');
+    //WebSocket 연결
+    // 메시지 규칙 접두사. 서버측(ChatWebSocketHandler)와 똑같이 맞줘야한다
+    const PREFIX_CHAT = "CHAT:";
+    const PREFIX_MESSAGE = "MESSAGE:";
+    const PREFIX_ERROR = "ERROR:";
 
-    //2. 연결이 열리면 상태를 표시한다
-    eventSource.onopen = () => {
-        status.textContent = '서버와 연결 됨(SSE). 새 메세지가 오면 바로 표시 됩니다';
-    }
+    //1. 서버에 웹소켓 연결을 연다 (브라우저 내장 객체)
+    //tip : 페이지가 http면 ws://, https면 wss:// 로 연결한다
+    const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const soket = new WebSocket(protocol + location.host + '/ws-chat');
+    console.log("주소확인 : ", protocol + location.host + '/ws-chat');
 
-    // 3. 서버가 chat 이벤트를 보내면 화면에 추가한다 (내가 보낸 메세지도 여기로 들어온다)
-    eventSource.addEventListener('chat', (event) => {
-        appendMessage(event.data);
-    });
+    //2. 연결이 열리면 (101) 확인
+    soket.onopen = () => {
+        status.textContent = '서버와 연결됨 (WebSocket)'
+    };
 
-    // 4. 연결이 끊기면 상태를 표시 한다. (EventSource가 알아서 재연결을 시도한다)
-    eventSource.onerror = () => {
-        status.textContent = '연결이 끊겼습니다. 다시 연결하는 중...';
-    }
+    //3. 서버가메시지를 보내면 접두사를 확인하고 나눈다
+    soket.onmessage = (e) => {
+        const text = e.data;
 
-//   === 데이터 보내기 : fetch 활용
-    chatForm.addEventListener('submit', async (e) => {
-        //폼 기본 동작을 막는다
+        if (text.startsWith(PREFIX_MESSAGE)){
+            appendMessage(text.substring(PREFIX_MESSAGE.length));
+        } else if (text.startsWith(PREFIX_ERROR)){
+            alert(text.substring(PREFIX_ERROR.length));
+        } else {
+            console.log("규칙이 없는 메세지: " + text);
+        }
+    };
+
+    //4. 연결이 닫히면 내용을 수정한다 (확인용)
+    soket.onclose = (e) => {
+        status.textContent = '연결이 끊겼습니다 새로고침 하면 다시 연결 됨';
+    };
+
+    //5. 전송
+    chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
+        const msg = msgInput.value.trim();
 
-        const response = await fetch("/chat", {
-            method: 'POST',
-            body: new URLSearchParams({msg: msgInput.value}),
-        });
-        if (!response.ok){
-            alert("메세지 전송에 실패했습니다");
+        if (msg === '') return;
+
+        //연결이 열린 상태(open)에서만 보낼수잇다, 연결 중에 send를 부르면 오류
+        if (soket.readyState !== WebSocket.OPEN) {
+            alert("서버와 연결되어 있지 않습니다");
             return;
         }
-        msgInput.value = "";
+        soket.send(PREFIX_CHAT + msg);
+        msgInput.value = '';
         msgInput.focus();
     });
+
+
+
 
     //처음 그려진 메세지 중 최신 메이시가 보이도록 스크롤을 맨아래로 내린다
     chatArea.scrollTop = chatArea.scrollHeight;

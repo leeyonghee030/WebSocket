@@ -1,4 +1,4 @@
-package com.demo.class_websocket_v1.sse;
+package com.demo.class_websocket_v1.websocket;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
