@@ -5,7 +5,9 @@
     <meta name="viewport"
           content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>채팅(WebSocket)</title>
+    <title>채팅(STOMP)</title>
+<!--    STOMP 클라이언트 라이브러리-->
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.5.0/bundles/stomp.umd.min.js"></script>
     <style>
         body {margin: 20px; font-family: "Calibri Light"}
         nav a {padding: 8px 15px; margin-right: 10px; background: #666; color: white;
@@ -27,7 +29,13 @@
 </head>
 <body>
 
-<h3>채팅 (WebSocket)</h3>
+<nav>
+    <a href="/rooms/1">1번방</a>
+    <a href="/rooms/2">2번방</a>
+    <a href="/rooms/3">3번방</a>
+</nav>
+
+<h3>채팅 (STOMP)</h3>
 <p id="status">서버에 연결하는 중...</p>
 <div class="chat-area" id="chatArea">
 {{#chats}}
@@ -36,77 +44,84 @@
 </div>
 
 <form id="chatForm">
+    <input type="text" name="sender" id="sender" placeholder="이름 입력" value="익명"
+           required autofocus>
     <input type="text" name="msg" id="msg" placeholder="메세지 입력"
            required autofocus>
     <button type="submit">전송</button>
 </form>
 
+
 <script>
+    //서버가 그려준 현재방 번호
+    const roomId = `{{roomId}}`;
+
     const chatArea = document.getElementById('chatArea');
     const status = document.getElementById('status');
     const chatForm = document.getElementById('chatForm');
     const msgInput = document.getElementById('msg');
 
     //받은 메세지를 화면 맨 아래 추가한다.
-    function appendMessage(msg) {
+    function appendMessage(sender, msg) {
         const div = document.createElement("div")
         div.className = "message";
-        div.textContent = msg;
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "name";
+        nameSpan.textContent = sender+" : ";
+
+        div.appendChild(nameSpan);
+        div.appendChild(document.createTextNode(msg))
+
         chatArea.appendChild(div);
         chatArea.scrollTop = chatArea.scrollHeight;
     }
 
-    //WebSocket 연결
-    // 메시지 규칙 접두사. 서버측(ChatWebSocketHandler)와 똑같이 맞줘야한다
-    const PREFIX_CHAT = "CHAT:";
-    const PREFIX_MESSAGE = "MESSAGE:";
-    const PREFIX_ERROR = "ERROR:";
-
-    //1. 서버에 웹소켓 연결을 연다 (브라우저 내장 객체)
-    //tip : 페이지가 http면 ws://, https면 wss:// 로 연결한다
+    //Stomp 클라이언트를 만든다
     const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const soket = new WebSocket(protocol + location.host + '/ws-chat');
-    console.log("주소확인 : ", protocol + location.host + '/ws-chat');
+    const client = new StompJs.Client({
+        brokerURL : protocol + location.host + "/ws-stomp",
+        reconnectDelay: 5000 // 연결 끊어 지면 5초마다 자동으로 다시 연결
+    })
 
-    //2. 연결이 열리면 (101) 확인
-    soket.onopen = () => {
-        status.textContent = '서버와 연결됨 (WebSocket)'
-    };
+    //2. 연결이 되면 이 방의 주소를 구독한다
+    client.onConnect = () => {
+        status.textContent = "서버와 연결됨 (STOMP) : " + roomId + "번 방";
+        client.subscribe('/sub/chat/' + roomId, (message) => {
+            const dto = JSON.parse(message.body);
+            appendMessage(dto.sender, dto.msg);
+        });
+    }
 
-    //3. 서버가메시지를 보내면 접두사를 확인하고 나눈다
-    soket.onmessage = (e) => {
-        const text = e.data;
+    //3. 연결이 끊기면 알아서 다시 시도한다
+    client.onWebSocketClose = () => {
+        status.textContent = "잠시 연결중단 자동으로 재 연결 처리중 ...";
+    }
+    // 4. 서버가 error 프레임을 보내면 콘솔남기기
+    client.onStompError = (frame) =>{
+        console.log("STOMP 오류 :", frame.headers['message']);
+    }
 
-        if (text.startsWith(PREFIX_MESSAGE)){
-            appendMessage(text.substring(PREFIX_MESSAGE.length));
-        } else if (text.startsWith(PREFIX_ERROR)){
-            alert(text.substring(PREFIX_ERROR.length));
-        } else {
-            console.log("규칙이 없는 메세지: " + text);
-        }
-    };
-
-    //4. 연결이 닫히면 내용을 수정한다 (확인용)
-    soket.onclose = (e) => {
-        status.textContent = '연결이 끊겼습니다 새로고침 하면 다시 연결 됨';
-    };
-
-    //5. 전송
-    chatForm.addEventListener('submit', (e) => {
+    //연결시작 (콜백을 다 등록한 뒤에 시작)
+    client.activate();
+    //5. 전송 json 으로 변경해서 /sub/chat/방번호로 던진다
+    chatForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const msg = msgInput.value.trim();
-
         if (msg === '') return;
-
-        //연결이 열린 상태(open)에서만 보낼수잇다, 연결 중에 send를 부르면 오류
-        if (soket.readyState !== WebSocket.OPEN) {
+        if (!client.connected){
             alert("서버와 연결되어 있지 않습니다");
             return;
         }
-        soket.send(PREFIX_CHAT + msg);
-        msgInput.value = '';
+
+        const dto = {sender: document.getElementById("sender").value, msg: msg}
+
+        client.publish({destination: '/pub/chat/' +roomId, body:JSON.stringify(dto)});
+        msgInput.value ='';
         msgInput.focus();
+
     });
+
 
 
 

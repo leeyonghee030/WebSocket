@@ -1,4 +1,4 @@
-package com.demo.class_websocket_v1.websocket;
+package com.demo.class_websocket_v1.stomp;
 
 import jakarta.persistence.*;
 import lombok.Builder;
@@ -15,11 +15,19 @@ public class Chat {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Column(nullable = false)
+    private Integer roomId;
+
+    @Column(nullable = false)
+    private String sender;
+
     private String msg;
 
     @Builder
-    public Chat(Integer id, String msg) {
+    public Chat(Integer id, Integer roomId, String sender, String msg) {
         this.id = id;
+        this.roomId = roomId;
+        this.sender = sender;
         this.msg = msg;
     }
 }
